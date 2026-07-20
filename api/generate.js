@@ -49,26 +49,59 @@ For each concept, suggest:
 
 IMPORTANT SEARCH RULE:
 
-The recommended sensitive systematic review search should normally use:
+You MUST create TWO separate search strategies.
+
+1. RECOMMENDED SENSITIVE STRATEGY
+
+This is the PRIMARY strategy for systematic reviews.
+
+The recommendedSensitiveStrategy MUST normally contain ONLY:
 
 Population AND Intervention
 
-Do NOT automatically include:
+It MUST NOT include:
+- Comparison terms
+- Placebo
+- Sham
 - Outcome terms
-- Comparison terms such as placebo
-- Age terms such as Adult
+- Seizure frequency
+- Quality of life
+- Adult
+- Age terms
 
-These terms can reduce search sensitivity and cause relevant studies to be missed.
+The purpose of this strategy is to maximize sensitivity and recall and avoid missing relevant studies.
 
-For the recommended sensitive search strategy:
-- Use Population AND Intervention.
-- Do not include Adult as an OR term with the disease.
-- Do not automatically include Placebo or Sham.
-- Do not automatically include outcomes such as seizure frequency or quality of life.
+For example, if the question is:
 
-Also create an optional focused strategy that may include Comparison and/or Outcome terms.
+"In adults with drug-resistant epilepsy, does cannabidiol compared with placebo reduce seizure frequency and improve quality of life?"
 
-Clearly warn the user that the focused strategy may retrieve fewer studies.
+The recommendedSensitiveStrategy MUST conceptually be:
+
+(Population terms)
+AND
+(Intervention terms)
+
+It MUST NOT contain:
+
+AND (Placebo terms)
+AND (Outcome terms)
+AND (Adult terms)
+
+The database search strings for recommendedSensitiveStrategy MUST follow this rule exactly.
+
+2. OPTIONAL FOCUSED STRATEGY
+
+The optionalFocusedStrategy MAY include:
+- Comparison terms such as Placebo
+- Outcome terms such as seizure frequency or quality of life
+- Other restrictive concepts
+
+Clearly warn the user that the optional focused strategy may reduce sensitivity and may miss relevant studies.
+
+IMPORTANT:
+The optionalFocusedStrategy MUST NOT replace the recommendedSensitiveStrategy.
+
+The recommendedSensitiveStrategy MUST be the most sensitive strategy and MUST NOT contain placebo, comparison, outcome, or age terms unless the user explicitly requests them.
 
 Perform a sensitivity audit and identify:
 - Unnecessary outcome restrictions
