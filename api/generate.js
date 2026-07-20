@@ -1,86 +1,132 @@
 export default async function handler(req, res) {
-    // 1. Only allow POST requests from our frontend
+    // Only allow POST requests
     if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method Not Allowed' });
+        return res.status(405).json({
+            error: 'Method Not Allowed'
+        });
     }
-
-    // 2. Get the research question (prompt) from the frontend
-    const { promptText } = req.body;
-    if (!promptText) {
-        return res.status(400).json({ error: 'Missing promptText' });
-    }
-
-    // 3. Securely access your API key from Vercel's Environment Variables
-    // This keeps it hidden from hackers!
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        return res.status(500).json({ error: 'API key not configured on server' });
-    }
-
-    // 4. The System Prompt (Hidden on the backend so users can't mess with it)
-    const systemPrompt = `You are an expert clinical medical librarian and systematic review methodologist. 
-    Analyze the user's research question and extract PICO elements.
-    
-    CRITICAL INSTRUCTIONS:
-    1. For EACH concept, suggest terms. You MUST separate MeSH (for PubMed) and Emtree (for Embase) from free-text keywords.
-    2. Keywords MUST include: spelling variants, acronyms, and BOTH generic and brand drug names. Provide truncation suggestions (using *) where appropriate.
-    3. Rationale: Briefly explain WHY a term is included (e.g., "Official MeSH term", "Brand name for...", "UK spelling variant", "Common abbreviation").
-    4. Quality Audit: Provide 'strengths' (e.g., good use of synonyms) and critical 'warnings' (e.g., "Including 'Outcome' terms severely restricts sensitivity. Consider removing.").
-    
-    JSON structure must strictly match the schema provided.`;
-
-    const geminiPayload = {
-        contents: [{ parts: [{ text: promptText }] }],
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: "OBJECT",
-                properties: {
-                    pico: {
-                        type: "OBJECT",
-                        properties: {
-                            population: { type: "ARRAY", items: { type: "OBJECT", properties: { term: { type: "STRING" }, vocab: { type: "STRING", enum: ["mesh", "emtree", "keyword"] }, reason: { type: "STRING" } } } },
-                            intervention: { type: "ARRAY", items: { type: "OBJECT", properties: { term: { type: "STRING" }, vocab: { type: "STRING", enum: ["mesh", "emtree", "keyword"] }, reason: { type: "STRING" } } } },
-                            comparison: { type: "ARRAY", items: { type: "OBJECT", properties: { term: { type: "STRING" }, vocab: { type: "STRING", enum: ["mesh", "emtree", "keyword"] }, reason: { type: "STRING" } } } },
-                            outcome: { type: "ARRAY", items: { type: "OBJECT", properties: { term: { type: "STRING" }, vocab: { type: "STRING", enum: ["mesh", "emtree", "keyword"] }, reason: { type: "STRING" } } } }
-                        }
-                    },
-                    qualityCheck: {
-                        type: "OBJECT",
-                        properties: {
-                            strengths: { type: "ARRAY", items: { type: "STRING" } },
-                            warnings: { type: "ARRAY", items: { type: "STRING" } }
-                        }
-                    },
-                    explanation: { type: "STRING" }
-                }
-            }
-        }
-    };
-
-    // We use the Gemini 1.5 Flash model for fast, structured responses
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
     try {
-        // 5. Call the Google Gemini API securely from the server
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(geminiPayload)
-        });
-        
-        const result = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(result.error?.message || 'Gemini API Error');
+        // Get research question from frontend
+        const { promptText } = req.body;
+
+        if (!promptText) {
+            return res.status(400).json({
+                error: 'Missing promptText'
+            });
         }
 
-        // 6. Send the clean data back to your frontend
-        res.status(200).json(result);
+        // Get API key from Vercel Environment Variables
+        const apiKey = process.env.GEMINI_API_KEY;
+
+        if (!apiKey) {
+            return res.status(500).json({
+                error: 'GEMINI_API_KEY is not configured in Vercel'
+            });
+        }
+
+        // System instructions
+        const systemPrompt = `
+You are an expert clinical medical librarian and systematic review methodologist.
+
+Analyze the user's research question and extract PICO elements.
+
+For each concept:
+1. Suggest MeSH terms for PubMed.
+2. Suggest Emtree terms for Embase.
+3. Suggest free-text keywords.
+4. Include spelling variants, acronyms, generic and brand drug names where relevant.
+5. Include truncation suggestions where appropriate.
+6. Give a short rationale for every suggested term.
+
+Also perform a quality audit:
+- Identify methodological strengths.
+- Identify warnings about search sensitivity.
+- Explain your reasoning.
+
+Return ONLY valid JSON using this exact structure:
+
+{
+  "pico": {
+    "population": [
+      {
+        "term": "string",
+        "vocab": "mesh",
+        "reason": "string"
+      }
+    ],
+    "intervention": [],
+    "comparison": [],
+    "outcome": []
+  },
+  "qualityCheck": {
+    "strengths": [],
+    "warnings": []
+  },
+  "explanation": "string"
+}
+
+The vocab field MUST be one of:
+"mesh"
+"emtree"
+"keyword"
+`;
+
+        // Gemini API request
+        const apiUrl =
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+        const geminiPayload = {
+            contents: [
+                {
+                    parts: [
+                        {
+                            text: promptText
+                        }
+                    ]
+                }
+            ],
+            systemInstruction: {
+                parts: [
+                    {
+                        text: systemPrompt
+                    }
+                ]
+            },
+            generationConfig: {
+                responseMimeType: "application/json"
+            }
+        };
+
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(geminiPayload)
+        });
+
+        const result = await response.json();
+
+        // IMPORTANT:
+        // Return Google's actual error so we can diagnose it
+        if (!response.ok) {
+            console.error("Gemini API Error:", result);
+
+            return res.status(response.status).json({
+                error: result.error?.message || 'Gemini API request failed',
+                details: result
+            });
+        }
+
+        // Send Gemini response to frontend
+        return res.status(200).json(result);
 
     } catch (error) {
         console.error("Server Error:", error);
-        res.status(500).json({ error: 'Failed to communicate with AI endpoint.' });
+
+        return res.status(500).json({
+            error: error.message || 'Failed to communicate with Gemini API'
+        });
     }
 }
