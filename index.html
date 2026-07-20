@@ -526,13 +526,28 @@
                 
                 const result = await response.json();
                 
-                if (response.ok && result.candidates && result.candidates[0].content.parts[0].text) {
-                    const data = JSON.parse(result.candidates[0].content.parts[0].text);
-                    processAIResponse(data);
-                } else {
-                    console.error("Backend Error:", result);
-                    alert("The AI service is currently unavailable. Please try again.");
-                }
+              if (response.ok && result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
+    try {
+        const data = JSON.parse(result.candidates[0].content.parts[0].text);
+        processAIResponse(data);
+    } catch (parseError) {
+        console.error("JSON Parse Error:", parseError);
+        console.error("Gemini Response:", result);
+
+        alert(
+            "Gemini returned an invalid response.\n\n" +
+            JSON.stringify(result, null, 2)
+        );
+    }
+} else {
+    console.error("Backend Error:", result);
+
+    alert(
+        "AI Backend Error:\n\n" +
+        (result.error || "Unknown error") +
+        "\n\nCheck Vercel Function Logs for details."
+    );
+}
             } catch (error) {
                 console.error("API Error:", error);
                 alert("Failed to communicate with the server. Please make sure your backend is deployed.");
