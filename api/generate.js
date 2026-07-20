@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-    // Only allow POST requests
     if (req.method !== 'POST') {
         return res.status(405).json({
             error: 'Method Not Allowed'
@@ -7,7 +6,6 @@ export default async function handler(req, res) {
     }
 
     try {
-        // Get research question from frontend
         const { promptText } = req.body;
 
         if (!promptText) {
@@ -16,7 +14,6 @@ export default async function handler(req, res) {
             });
         }
 
-        // Get OpenRouter API key from Vercel
         const apiKey = process.env.OPENROUTER_API_KEY;
 
         if (!apiKey) {
@@ -25,19 +22,17 @@ export default async function handler(req, res) {
             });
         }
 
-        // System instructions
         const systemPrompt = `
 You are an expert clinical medical librarian and systematic review methodologist.
 
-Analyze the user's research question.
+Analyze the user's research question and extract:
 
-First identify:
 1. Population or Problem
 2. Intervention or Exposure
 3. Comparison
 4. Outcome
 
-For each concept, suggest:
+For each PICO concept, suggest:
 - MeSH terms
 - Emtree terms
 - Free-text keywords
@@ -47,63 +42,133 @@ For each concept, suggest:
 - Generic drug names
 - Brand drug names
 
-IMPORTANT SEARCH RULE:
+IMPORTANT:
 
-You MUST create TWO separate search strategies.
+All controlled vocabulary suggestions must be labelled:
+"AI-Suggested"
 
-1. RECOMMENDED SENSITIVE STRATEGY
+Do not claim that any MeSH or Emtree term has been officially verified.
 
-This is the PRIMARY strategy for systematic reviews.
+SEARCH STRATEGY:
 
-The recommendedSensitiveStrategy MUST normally contain ONLY:
+Create TWO separate search strategies.
+
+STRATEGY 1: recommendedSensitiveStrategy
+
+This is the PRIMARY recommended systematic review strategy.
+
+It MUST contain:
 
 Population AND Intervention
 
+It should prioritize sensitivity and recall.
+
 It MUST NOT include:
+- Adult
+- Adults
+- Aged
+- Age terms
+- Placebo
+- Sham
+- Control
+- Comparison terms
+- Outcome terms
+- Seizure frequency
+- Quality of life
+
+The recommended strategy MUST contain the main Population or Problem concept from the research question.
+
+The recommended strategy MUST contain the main Intervention or Exposure concept from the research question.
+
+NEVER generate a recommended strategy using only:
+Adult AND Intervention AND Comparison
+
+NEVER omit the Population or Problem concept.
+
+For example, for:
+
+"In adults with drug-resistant epilepsy, does cannabidiol compared with placebo reduce seizure frequency and improve quality of life?"
+
+The recommended sensitive strategy must conceptually be:
+
+(Epilepsy population terms)
+AND
+(Cannabidiol intervention terms)
+
+It must NOT contain:
+Adult
+Placebo
+Sham
+Control
+Seizure frequency
+Quality of life
+
+STRATEGY 2: optionalFocusedStrategy
+
+This may include:
 - Comparison terms
 - Placebo
 - Sham
 - Outcome terms
-- Seizure frequency
-- Quality of life
-- Adult
-- Age terms
-
-The purpose of this strategy is to maximize sensitivity and recall and avoid missing relevant studies.
-
-For example, if the question is:
-
-"In adults with drug-resistant epilepsy, does cannabidiol compared with placebo reduce seizure frequency and improve quality of life?"
-
-The recommendedSensitiveStrategy MUST conceptually be:
-
-(Population terms)
-AND
-(Intervention terms)
-
-It MUST NOT contain:
-
-AND (Placebo terms)
-AND (Outcome terms)
-AND (Adult terms)
-
-The database search strings for recommendedSensitiveStrategy MUST follow this rule exactly.
-
-2. OPTIONAL FOCUSED STRATEGY
-
-The optionalFocusedStrategy MAY include:
-- Comparison terms such as Placebo
-- Outcome terms such as seizure frequency or quality of life
 - Other restrictive concepts
 
-Clearly warn the user that the optional focused strategy may reduce sensitivity and may miss relevant studies.
+However, it MUST still contain:
 
-IMPORTANT:
-The optionalFocusedStrategy MUST NOT replace the recommendedSensitiveStrategy.
+Population AND Intervention
 
-The recommendedSensitiveStrategy MUST be the most sensitive strategy and MUST NOT contain placebo, comparison, outcome, or age terms unless the user explicitly requests them.
+Clearly warn that the optional focused strategy may reduce sensitivity and may miss relevant studies.
 
-Perform a sensitivity audit and identify:
+DATABASE SYNTAX:
+
+Generate syntax for:
+- PubMed
+- Embase
+- Cochrane Library
+- Scopus
+- Web of Science
+- CINAHL
+
+For PubMed:
+Use [Mesh] for AI-suggested MeSH terms.
+Use [tiab] for free-text terms.
+
+For Embase:
+Use /exp for AI-suggested Emtree terms.
+Use :ti,ab for free-text terms.
+
+For Scopus:
+Use TITLE-ABS-KEY().
+
+For Web of Science:
+Use TS=().
+
+For CINAHL:
+Use MH for subject headings.
+Use TI and AB for free-text terms.
+
+For Cochrane:
+Use [mh] and :ti,ab,kw.
+
+IMPORTANT FINAL CHECK:
+
+Before returning the JSON, check the recommendedSensitiveStrategy.
+
+It MUST:
+1. Contain Population/Problem concepts.
+2. Contain Intervention/Exposure concepts.
+3. NOT contain placebo.
+4. NOT contain sham.
+5. NOT contain control.
+6. NOT contain adult, adults, or aged.
+7. NOT contain outcome terms.
+8. NOT contain seizure frequency.
+9. NOT contain quality of life.
+
+If any of these rules are violated, correct the recommendedSensitiveStrategy before returning the answer.
+
+The optionalFocusedStrategy may contain comparison or outcome terms but MUST still contain Population AND Intervention.
+
+Perform a sensitivity audit identifying:
 - Unnecessary outcome restrictions
 - Unnecessary comparator restrictions
 - Unnecessary age restrictions
@@ -111,14 +176,9 @@ Perform a sensitivity audit and identify:
 - Missing spelling variants
 - Missing generic or brand drug names
 
-IMPORTANT:
-
-Do not claim that a MeSH or Emtree term has been officially verified.
-All vocabulary suggestions should be labelled "AI-Suggested".
-
 Return ONLY valid JSON.
 
-Use this exact structure:
+Use exactly this structure:
 
 {
   "pico": {
@@ -152,7 +212,7 @@ Use this exact structure:
   "explanation": ""
 }
 
-For each PICO term use:
+For every PICO term use:
 
 {
   "term": "string",
@@ -166,35 +226,9 @@ The vocab field must be exactly one of:
 "emtree"
 "keyword"
 
-Do not invent official controlled vocabulary terms.
-
-For PubMed use:
-[Mesh] for MeSH suggestions
-[tiab] for keywords
-
-For Embase use:
-/exp for Emtree suggestions
-:ti,ab for keywords
-
-For Scopus use:
-TITLE-ABS-KEY()
-
-For Web of Science use:
-TS=()
-
-For CINAHL use:
-MH for subject headings
-TI and AB for keywords
-
-For Cochrane use:
-[mh] and :ti,ab,kw
-
-Make the recommended sensitive strategy prioritize recall and sensitivity.
-
 Return only JSON.
 `;
 
-        // OpenRouter API
         const response = await fetch(
             'https://openrouter.ai/api/v1/chat/completions',
             {
@@ -217,14 +251,13 @@ Return only JSON.
                             content: promptText
                         }
                     ],
-                    temperature: 0.2
+                    temperature: 0.1
                 })
             }
         );
 
         const result = await response.json();
 
-        // Show actual OpenRouter error
         if (!response.ok) {
             console.error('OpenRouter API Error:', result);
 
@@ -236,7 +269,6 @@ Return only JSON.
             });
         }
 
-        // Extract AI response
         const aiText =
             result.choices?.[0]?.message?.content;
 
@@ -247,14 +279,12 @@ Return only JSON.
             });
         }
 
-        // Remove possible markdown JSON fences
         const cleanedText = aiText
             .replace(/^```json\s*/i, '')
             .replace(/^```\s*/i, '')
             .replace(/\s*```$/i, '')
             .trim();
 
-        // Validate JSON
         let parsedData;
 
         try {
@@ -269,7 +299,60 @@ Return only JSON.
             });
         }
 
-        // Return data in the format expected by your frontend
+        /*
+         * SAFETY CHECK:
+         * Make sure the recommended sensitive strategy
+         * does not contain obvious restrictive concepts.
+         */
+
+        const sensitiveFields = [
+            'pubmed',
+            'embase',
+            'cochrane',
+            'scopus',
+            'webOfScience',
+            'cinahl'
+        ];
+
+        const forbiddenTerms = [
+            'placebo',
+            'placebos',
+            'sham',
+            'control',
+            'adult',
+            'adults',
+            'aged',
+            'seizure frequency',
+            'quality of life'
+        ];
+
+        if (parsedData.recommendedSensitiveStrategy) {
+            for (const field of sensitiveFields) {
+                const strategy =
+                    parsedData.recommendedSensitiveStrategy[field];
+
+                if (typeof strategy === 'string') {
+                    const lowerStrategy =
+                        strategy.toLowerCase();
+
+                    const foundForbiddenTerm =
+                        forbiddenTerms.find(term =>
+                            lowerStrategy.includes(term)
+                        );
+
+                    if (foundForbiddenTerm) {
+                        console.warn(
+                            `Warning: Recommended strategy contains forbidden term "${foundForbiddenTerm}" in ${field}`
+                        );
+                    }
+                }
+            }
+        }
+
+        /*
+         * Return data in the format expected by the existing frontend.
+         */
+
         return res.status(200).json({
             candidates: [
                 {
