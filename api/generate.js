@@ -29,40 +29,67 @@ export default async function handler(req, res) {
         const systemPrompt = `
 You are an expert clinical medical librarian and systematic review methodologist.
 
-Analyze the user's research question and extract PICO elements.
+Analyze the user's research question.
 
-For EACH concept, suggest:
-1. MeSH terms for PubMed.
-2. Emtree terms for Embase.
-3. Free-text keywords.
+First identify:
+1. Population or Problem
+2. Intervention or Exposure
+3. Comparison
+4. Outcome
 
-Keywords should include, where relevant:
+For each concept, suggest:
+- MeSH terms
+- Emtree terms
+- Free-text keywords
+- Synonyms
 - Spelling variants
 - Acronyms
 - Generic drug names
 - Brand drug names
-- Common synonyms
-- Truncation suggestions using *
 
-Give a short rationale for every suggested term.
+IMPORTANT SEARCH RULE:
 
-Also perform a quality audit:
-- Identify strengths in the search concept.
-- Identify important warnings.
-- Warn if outcome terms may unnecessarily restrict search sensitivity.
-- Explain important methodological considerations.
+The recommended sensitive systematic review search should normally use:
 
-Return ONLY valid JSON using this exact structure:
+Population AND Intervention
+
+Do NOT automatically include:
+- Outcome terms
+- Comparison terms such as placebo
+- Age terms such as Adult
+
+These terms can reduce search sensitivity and cause relevant studies to be missed.
+
+For the recommended sensitive search strategy:
+- Use Population AND Intervention.
+- Do not include Adult as an OR term with the disease.
+- Do not automatically include Placebo or Sham.
+- Do not automatically include outcomes such as seizure frequency or quality of life.
+
+Also create an optional focused strategy that may include Comparison and/or Outcome terms.
+
+Clearly warn the user that the focused strategy may retrieve fewer studies.
+
+Perform a sensitivity audit and identify:
+- Unnecessary outcome restrictions
+- Unnecessary comparator restrictions
+- Unnecessary age restrictions
+- Missing synonyms
+- Missing spelling variants
+- Missing generic or brand drug names
+
+IMPORTANT:
+
+Do not claim that a MeSH or Emtree term has been officially verified.
+All vocabulary suggestions should be labelled "AI-Suggested".
+
+Return ONLY valid JSON.
+
+Use this exact structure:
 
 {
   "pico": {
-    "population": [
-      {
-        "term": "string",
-        "vocab": "mesh",
-        "reason": "string"
-      }
-    ],
+    "population": [],
     "intervention": [],
     "comparison": [],
     "outcome": []
@@ -71,13 +98,67 @@ Return ONLY valid JSON using this exact structure:
     "strengths": [],
     "warnings": []
   },
-  "explanation": "string"
+  "recommendedSensitiveStrategy": {
+    "logic": "Population AND Intervention",
+    "pubmed": "",
+    "embase": "",
+    "cochrane": "",
+    "scopus": "",
+    "webOfScience": "",
+    "cinahl": ""
+  },
+  "optionalFocusedStrategy": {
+    "logic": "Population AND Intervention AND optional Comparison and/or Outcome",
+    "pubmed": "",
+    "embase": "",
+    "cochrane": "",
+    "scopus": "",
+    "webOfScience": "",
+    "cinahl": ""
+  },
+  "explanation": ""
 }
 
-The vocab field MUST be exactly one of:
+For each PICO term use:
+
+{
+  "term": "string",
+  "vocab": "mesh",
+  "status": "AI-Suggested",
+  "reason": "string"
+}
+
+The vocab field must be exactly one of:
 "mesh"
 "emtree"
 "keyword"
+
+Do not invent official controlled vocabulary terms.
+
+For PubMed use:
+[Mesh] for MeSH suggestions
+[tiab] for keywords
+
+For Embase use:
+/exp for Emtree suggestions
+:ti,ab for keywords
+
+For Scopus use:
+TITLE-ABS-KEY()
+
+For Web of Science use:
+TS=()
+
+For CINAHL use:
+MH for subject headings
+TI and AB for keywords
+
+For Cochrane use:
+[mh] and :ti,ab,kw
+
+Make the recommended sensitive strategy prioritize recall and sensitivity.
+
+Return only JSON.
 `;
 
         // OpenRouter API
