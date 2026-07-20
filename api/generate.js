@@ -16,12 +16,12 @@ export default async function handler(req, res) {
             });
         }
 
-        // Get API key from Vercel Environment Variables
-        const apiKey = process.env.GEMINI_API_KEY;
+        // Get OpenRouter API key from Vercel
+        const apiKey = process.env.OPENROUTER_API_KEY;
 
         if (!apiKey) {
             return res.status(500).json({
-                error: 'GEMINI_API_KEY is not configured in Vercel'
+                error: 'OPENROUTER_API_KEY is not configured in Vercel'
             });
         }
 
@@ -31,18 +31,26 @@ You are an expert clinical medical librarian and systematic review methodologist
 
 Analyze the user's research question and extract PICO elements.
 
-For each concept:
-1. Suggest MeSH terms for PubMed.
-2. Suggest Emtree terms for Embase.
-3. Suggest free-text keywords.
-4. Include spelling variants, acronyms, generic and brand drug names where relevant.
-5. Include truncation suggestions where appropriate.
-6. Give a short rationale for every suggested term.
+For EACH concept, suggest:
+1. MeSH terms for PubMed.
+2. Emtree terms for Embase.
+3. Free-text keywords.
+
+Keywords should include, where relevant:
+- Spelling variants
+- Acronyms
+- Generic drug names
+- Brand drug names
+- Common synonyms
+- Truncation suggestions using *
+
+Give a short rationale for every suggested term.
 
 Also perform a quality audit:
-- Identify methodological strengths.
-- Identify warnings about search sensitivity.
-- Explain your reasoning.
+- Identify strengths in the search concept.
+- Identify important warnings.
+- Warn if outcome terms may unnecessarily restrict search sensitivity.
+- Explain important methodological considerations.
 
 Return ONLY valid JSON using this exact structure:
 
@@ -66,67 +74,109 @@ Return ONLY valid JSON using this exact structure:
   "explanation": "string"
 }
 
-The vocab field MUST be one of:
+The vocab field MUST be exactly one of:
 "mesh"
 "emtree"
 "keyword"
 `;
 
-        // Gemini API request
-        const apiUrl =
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-
-        const geminiPayload = {
-            contents: [
-                {
-                    parts: [
+        // OpenRouter API
+        const response = await fetch(
+            'https://openrouter.ai/api/v1/chat/completions',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                    'HTTP-Referer': 'https://review-ai-ncxw.vercel.app',
+                    'X-OpenRouter-Title': 'ReviewAI'
+                },
+                body: JSON.stringify({
+                    model: 'openrouter/free',
+                    messages: [
                         {
-                            text: promptText
+                            role: 'system',
+                            content: systemPrompt
+                        },
+                        {
+                            role: 'user',
+                            content: promptText
                         }
-                    ]
-                }
-            ],
-            systemInstruction: {
-                parts: [
-                    {
-                        text: systemPrompt
-                    }
-                ]
-            },
-            generationConfig: {
-                responseMimeType: "application/json"
+                    ],
+                    temperature: 0.2
+                })
             }
-        };
-
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(geminiPayload)
-        });
+        );
 
         const result = await response.json();
 
-        // IMPORTANT:
-        // Return Google's actual error so we can diagnose it
+        // Show actual OpenRouter error
         if (!response.ok) {
-            console.error("Gemini API Error:", result);
+            console.error('OpenRouter API Error:', result);
 
             return res.status(response.status).json({
-                error: result.error?.message || 'Gemini API request failed',
+                error:
+                    result.error?.message ||
+                    'OpenRouter API request failed',
                 details: result
             });
         }
 
-        // Send Gemini response to frontend
-        return res.status(200).json(result);
+        // Extract AI response
+        const aiText =
+            result.choices?.[0]?.message?.content;
+
+        if (!aiText) {
+            return res.status(500).json({
+                error: 'OpenRouter returned an empty response',
+                details: result
+            });
+        }
+
+        // Remove possible markdown JSON fences
+        const cleanedText = aiText
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+
+        // Validate JSON
+        let parsedData;
+
+        try {
+            parsedData = JSON.parse(cleanedText);
+        } catch (parseError) {
+            console.error('JSON Parse Error:', parseError);
+            console.error('AI Response:', aiText);
+
+            return res.status(500).json({
+                error: 'AI returned invalid JSON',
+                rawResponse: aiText
+            });
+        }
+
+        // Return data in the format expected by your frontend
+        return res.status(200).json({
+            candidates: [
+                {
+                    content: {
+                        parts: [
+                            {
+                                text: JSON.stringify(parsedData)
+                            }
+                        ]
+                    }
+                }
+            ]
+        });
 
     } catch (error) {
-        console.error("Server Error:", error);
+        console.error('Server Error:', error);
 
         return res.status(500).json({
-            error: error.message || 'Failed to communicate with Gemini API'
+            error:
+                error.message ||
+                'Failed to communicate with OpenRouter'
         });
     }
 }
