@@ -135,6 +135,9 @@ Use [tiab] for free-text terms.
 For Embase:
 Use /exp for AI-suggested Emtree terms.
 Use :ti,ab for free-text terms.
+Always format Emtree terms exactly as 'Term'/exp.
+Do NOT write 'exp Term'/exp.
+Do NOT add extra quotes or the word exp before the term.
 
 For Scopus:
 Use TITLE-ABS-KEY().
@@ -143,13 +146,16 @@ For Web of Science:
 Use TS=().
 
 For CINAHL:
-Use MH for subject headings.
-Use TI and AB for free-text terms.
+Use MH "Term+" for AI-suggested subject headings.
+Use TI "Term" OR AB "Term" for free-text keywords.
+Always include all selected Population and Intervention keywords.
+Combine synonyms within each concept using OR.
+Combine Population and Intervention concepts using AND.
 
 For Cochrane:
 Use [mh] and :ti,ab,kw.
 
-IMPORTANT FINAL CHECK:
+3IMPORTANT FINAL CHECK:
 
 Before returning the JSON, check the recommendedSensitiveStrategy.
 
