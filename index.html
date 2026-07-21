@@ -595,6 +595,17 @@
             }
 
             renderTerms();
+            // Display AI-generated search strategies
+if (data.recommendedSensitiveStrategy) {
+    const strategy = data.recommendedSensitiveStrategy;
+
+    document.getElementById('pubmedOut').value = strategy.pubmed || '';
+    document.getElementById('embaseOut').value = strategy.embase || '';
+    document.getElementById('cochraneOut').value = strategy.cochrane || '';
+    document.getElementById('scopusOut').value = strategy.scopus || '';
+    document.getElementById('wosOut').value = strategy.webOfScience || '';
+    document.getElementById('cinahlOut').value = strategy.cinahl || '';
+}
         }
 
         function copyText(elementId, btn) {
