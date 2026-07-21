@@ -407,7 +407,7 @@
             // Simulate API Latency (e.g., querying NLM E-utilities)
             await new Promise(r => setTimeout(r, 1500));
 
-            Object.keys(appState).forEach(category => {
+         ['population', 'intervention'].forEach(category => {
                 appState[category].forEach(item => {
                     if (item.vocab === 'mesh' || item.vocab === 'emtree') {
                         // Simulation: 85% chance term is verified as valid in official DB
@@ -572,7 +572,11 @@
             };
 
             if (data.pico) {
-                appState.population = mapTerms(data.pico.population);
+               appState.population = mapTerms(data.pico.population).filter(item =>
+    !['adult', 'adults', 'aged', 'elderly', 'older adults'].includes(
+        item.term.toLowerCase().trim()
+    )
+);
                 appState.intervention = mapTerms(data.pico.intervention);
                 appState.comparison = mapTerms(data.pico.comparison);
                 
