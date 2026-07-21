@@ -399,42 +399,64 @@
         }
 
         async function verifyVocabularies() {
-            const btn = document.getElementById('verifyBtn');
-            const origHtml = btn.innerHTML;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying...';
-            btn.disabled = true;
+    const btn = document.getElementById('verifyBtn');
+    const origHtml = btn.innerHTML;
 
-            // Simulate API Latency (e.g., querying NLM E-utilities)
-            await new Promise(r => setTimeout(r, 1500));
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying...';
+    btn.disabled = true;
 
-         ['population', 'intervention'].forEach(category => {
-                appState[category].forEach(item => {
-                    if (item.vocab === 'mesh' || item.vocab === 'emtree') {
-                        // Simulation: 85% chance term is verified as valid in official DB
-                        // If it's a known bad term (e.g. user manually adds gibberish), it will fail.
-                        // Here we just use Math.random to simulate the database lookup result.
-                        item.verified = Math.random() > 0.15;
-                        
-                        // Auto-deselect if not found to protect user
-                        if(item.verified === false) item.selected = false;
-                    }
+    try {
+        for (const category of ['population', 'intervention']) {
+            for (const item of appState[category]) {
+
+                if (item.vocab !== 'mesh' && item.vocab !== 'emtree') {
+                    continue;
+                }
+
+                item.verified = null;
+
+                const response = await fetch('/api/verify-vocabulary', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        term: item.term,
+                        vocab: item.vocab
+                    })
                 });
-            });
 
-            btn.innerHTML = '<i class="fa-solid fa-check-double"></i> Verification Complete';
-            btn.classList.replace('text-emerald-700', 'text-slate-600');
-            btn.classList.replace('bg-emerald-50', 'bg-slate-100');
-            
-            setTimeout(() => {
-                btn.innerHTML = origHtml;
-                btn.disabled = false;
-                btn.classList.replace('text-slate-600', 'text-emerald-700');
-                btn.classList.replace('bg-slate-100', 'bg-emerald-50');
-            }, 3000);
+                const result = await response.json();
 
-            renderTerms();
+                if (response.ok && result.verified === true) {
+                    item.verified = true;
+                } else {
+                    item.verified = false;
+                    item.selected = false;
+                }
+            }
         }
 
+        btn.innerHTML =
+            '<i class="fa-solid fa-check-double"></i> Verification Complete';
+
+    } catch (error) {
+        console.error('Verification Error:', error);
+
+        alert(
+            'Unable to verify MeSH/Emtree terms. Please try again.'
+        );
+
+    } finally {
+        btn.disabled = false;
+
+        setTimeout(() => {
+            btn.innerHTML = origHtml;
+        }, 3000);
+    }
+
+    renderTerms();
+}
         async function testKnownPaper() {
             const input = document.getElementById('pmidInput');
             const resContainer = document.getElementById('testResultContainer');
