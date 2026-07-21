@@ -484,21 +484,12 @@
             return `(${parts.join(' OR ')})`;
         }
 
-        function generateStrings() {
-            const databases = ['pubmed', 'embase', 'cochrane', 'scopus', 'wos', 'cinahl'];
-            
-            databases.forEach(db => {
-                const finalBlocks = [];
-                
-                Object.keys(appState).forEach(category => {
-                    const blockStr = buildCategoryBlock(appState[category], db);
-                    if (blockStr) finalBlocks.push(blockStr);
-                });
-
-                const finalString = finalBlocks.join('\nAND\n');
-                document.getElementById(`${db}Out`).value = finalString;
-            });
-        }
+       function generateStrings() {
+    // This function is now handled by the AI-generated
+    // recommendedSensitiveStrategy and optionalFocusedStrategy.
+    // We keep it empty so the old PICO-based strategy
+    // does not overwrite the AI-generated strategies.
+}
 
         async function generateFromAI() {
             const promptText = document.getElementById('aiPrompt').value.trim();
