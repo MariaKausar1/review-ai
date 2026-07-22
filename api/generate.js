@@ -1,4 +1,5 @@
 export default async function handler(req, res) {
+    // Only allow POST requests
     if (req.method !== 'POST') {
         return res.status(405).json({
             error: 'Method Not Allowed'
@@ -6,17 +7,21 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { promptText } = req.body;
+        const { promptText } = req.body || {};
 
-        if (!promptText) {
+        // Validate user input
+        if (!promptText || typeof promptText !== 'string') {
             return res.status(400).json({
-                error: 'Missing promptText'
+                error: 'Missing or invalid promptText'
             });
         }
 
+        // Get OpenRouter API key
         const apiKey = process.env.OPENROUTER_API_KEY;
 
         if (!apiKey) {
+            console.error('OPENROUTER_API_KEY is missing');
+
             return res.status(500).json({
                 error: 'OPENROUTER_API_KEY is not configured in Vercel'
             });
@@ -155,7 +160,7 @@ Combine Population and Intervention concepts using AND.
 For Cochrane:
 Use [mh] and :ti,ab,kw.
 
-3IMPORTANT FINAL CHECK:
+IMPORTANT FINAL CHECK:
 
 Before returning the JSON, check the recommendedSensitiveStrategy.
 
@@ -183,6 +188,8 @@ Perform a sensitivity audit identifying:
 - Missing generic or brand drug names
 
 Return ONLY valid JSON.
+Do not use Markdown code fences.
+Do not write any explanation before or after the JSON.
 
 Use exactly this structure:
 
@@ -232,9 +239,10 @@ The vocab field must be exactly one of:
 "emtree"
 "keyword"
 
-Return only JSON.
+Return only valid JSON.
 `;
 
+        // Call OpenRouter
         const response = await fetch(
             'https://openrouter.ai/api/v1/chat/completions',
             {
@@ -246,7 +254,9 @@ Return only JSON.
                     'X-OpenRouter-Title': 'ReviewAI'
                 },
                 body: JSON.stringify({
-                    model: 'openrouter/free',
+                    // Use a specific model instead of the rotating free router
+                    model: 'openai/gpt-oss-20b:free',
+
                     messages: [
                         {
                             role: 'system',
@@ -257,59 +267,155 @@ Return only JSON.
                             content: promptText
                         }
                     ],
-                    temperature: 0.1
+
+                    temperature: 0.1,
+
+                    // Ask the model to return a JSON object
+                    response_format: {
+                        type: 'json_object'
+                    }
                 })
             }
         );
 
+        // Read OpenRouter response
         const result = await response.json();
 
+        // Handle OpenRouter API errors
         if (!response.ok) {
-            console.error('OpenRouter API Error:', result);
+            console.error(
+                'OpenRouter API Error:',
+                JSON.stringify(result, null, 2)
+            );
 
             return res.status(response.status).json({
                 error:
-                    result.error?.message ||
+                    result?.error?.message ||
                     'OpenRouter API request failed',
+
                 details: result
             });
         }
 
+        // Get AI response text
         const aiText =
-            result.choices?.[0]?.message?.content;
+            result?.choices?.[0]?.message?.content;
 
         if (!aiText) {
+            console.error(
+                'OpenRouter returned no content:',
+                JSON.stringify(result, null, 2)
+            );
+
             return res.status(500).json({
                 error: 'OpenRouter returned an empty response',
                 details: result
             });
         }
 
-        const cleanedText = aiText
-            .replace(/^```json\s*/i, '')
-            .replace(/^```\s*/i, '')
-            .replace(/\s*```$/i, '')
-            .trim();
+        console.log(
+            'AI response received:',
+            aiText.substring(0, 1000)
+        );
+
+        // ==========================================
+        // ROBUST JSON PARSING
+        // ==========================================
 
         let parsedData;
 
         try {
-            parsedData = JSON.parse(cleanedText);
+            let cleanedText = aiText.trim();
+
+            // Remove Markdown code fences if the model ignores instructions
+            cleanedText = cleanedText
+                .replace(/^```json\s*/i, '')
+                .replace(/^```\s*/i, '')
+                .replace(/\s*```$/i, '')
+                .trim();
+
+            // Find the first JSON object
+            const firstBrace =
+                cleanedText.indexOf('{');
+
+            // Find the final JSON object closing brace
+            const lastBrace =
+                cleanedText.lastIndexOf('}');
+
+            if (
+                firstBrace === -1 ||
+                lastBrace === -1 ||
+                lastBrace <= firstBrace
+            ) {
+                throw new Error(
+                    'No valid JSON object found in AI response'
+                );
+            }
+
+            // Extract only the JSON object
+            cleanedText =
+                cleanedText.substring(
+                    firstBrace,
+                    lastBrace + 1
+                );
+
+            // Parse JSON
+            parsedData =
+                JSON.parse(cleanedText);
+
         } catch (parseError) {
-            console.error('JSON Parse Error:', parseError);
-            console.error('AI Response:', aiText);
+            console.error(
+                'JSON Parse Error:',
+                parseError.message
+            );
+
+            console.error(
+                'Full AI Response:',
+                aiText
+            );
 
             return res.status(500).json({
                 error: 'AI returned invalid JSON',
-                rawResponse: aiText
+
+                details:
+                    parseError.message,
+
+                rawResponse:
+                    aiText
             });
         }
 
-        /*
-         * SAFETY CHECK:
-         * Make sure the recommended sensitive strategy
-         * does not contain obvious restrictive concepts.
-         */
+        // ==========================================
+        // BASIC RESPONSE VALIDATION
+        // ==========================================
+
+        if (
+            !parsedData ||
+            typeof parsedData !== 'object'
+        ) {
+            return res.status(500).json({
+                error:
+                    'AI returned an invalid response structure'
+            });
+        }
+
+        if (!parsedData.pico) {
+            console.warn(
+                'Warning: PICO section is missing'
+            );
+        }
+
+        if (
+            !parsedData.recommendedSensitiveStrategy
+        ) {
+            console.warn(
+                'Warning: Recommended strategy is missing'
+            );
+        }
+
+        // ==========================================
+        // SAFETY CHECK FOR SENSITIVE STRATEGY
+        // ==========================================
 
         const sensitiveFields = [
             'pubmed',
@@ -332,21 +438,37 @@ Return only JSON.
             'quality of life'
         ];
 
-        if (parsedData.recommendedSensitiveStrategy) {
-            for (const field of sensitiveFields) {
+        if (
+            parsedData.recommendedSensitiveStrategy
+        ) {
+            for (
+                const field
+                of sensitiveFields
+            ) {
                 const strategy =
-                    parsedData.recommendedSensitiveStrategy[field];
+                    parsedData
+                        .recommendedSensitiveStrategy[
+                            field
+                        ];
 
-                if (typeof strategy === 'string') {
+                if (
+                    typeof strategy ===
+                    'string'
+                ) {
                     const lowerStrategy =
                         strategy.toLowerCase();
 
                     const foundForbiddenTerm =
-                        forbiddenTerms.find(term =>
-                            lowerStrategy.includes(term)
+                        forbiddenTerms.find(
+                            term =>
+                                lowerStrategy.includes(
+                                    term
+                                )
                         );
 
-                    if (foundForbiddenTerm) {
+                    if (
+                        foundForbiddenTerm
+                    ) {
                         console.warn(
                             `Warning: Recommended strategy contains forbidden term "${foundForbiddenTerm}" in ${field}`
                         );
@@ -355,9 +477,9 @@ Return only JSON.
             }
         }
 
-        /*
-         * Return data in the format expected by the existing frontend.
-         */
+        // ==========================================
+        // RETURN FORMAT EXPECTED BY FRONTEND
+        // ==========================================
 
         return res.status(200).json({
             candidates: [
@@ -365,7 +487,10 @@ Return only JSON.
                     content: {
                         parts: [
                             {
-                                text: JSON.stringify(parsedData)
+                                text:
+                                    JSON.stringify(
+                                        parsedData
+                                    )
                             }
                         ]
                     }
@@ -374,11 +499,14 @@ Return only JSON.
         });
 
     } catch (error) {
-        console.error('Server Error:', error);
+        console.error(
+            'Server Error:',
+            error
+        );
 
         return res.status(500).json({
             error:
-                error.message ||
+                error?.message ||
                 'Failed to communicate with OpenRouter'
         });
     }
