@@ -1,5 +1,8 @@
 export default async function handler(req, res) {
-    // Only allow POST requests
+    // ==========================================
+    // 1. ONLY ALLOW POST REQUESTS
+    // ==========================================
+
     if (req.method !== 'POST') {
         return res.status(405).json({
             error: 'Method Not Allowed'
@@ -7,30 +10,45 @@ export default async function handler(req, res) {
     }
 
     try {
+        // ==========================================
+        // 2. GET USER QUESTION
+        // ==========================================
+
         const { promptText } = req.body || {};
 
-        // Validate user input
         if (!promptText || typeof promptText !== 'string') {
             return res.status(400).json({
-                error: 'Missing or invalid promptText'
+                error: 'Missing promptText'
             });
         }
 
-        // Get OpenRouter API key
+        // ==========================================
+        // 3. GET OPENROUTER API KEY
+        // ==========================================
+
         const apiKey = process.env.OPENROUTER_API_KEY;
 
         if (!apiKey) {
-            console.error('OPENROUTER_API_KEY is missing');
+            console.error(
+                'OPENROUTER_API_KEY is not configured'
+            );
 
             return res.status(500).json({
-                error: 'OPENROUTER_API_KEY is not configured in Vercel'
+                error:
+                    'OPENROUTER_API_KEY is not configured in Vercel'
             });
         }
+
+        // ==========================================
+        // 4. SYSTEM PROMPT
+        // ==========================================
 
         const systemPrompt = `
 You are an expert clinical medical librarian and systematic review methodologist.
 
-Analyze the user's research question and extract:
+Your task is to analyze the user's research question and create a structured PICO analysis and database search strategies.
+
+Extract:
 
 1. Population or Problem
 2. Intervention or Exposure
@@ -38,6 +56,7 @@ Analyze the user's research question and extract:
 4. Outcome
 
 For each PICO concept, suggest:
+
 - MeSH terms
 - Emtree terms
 - Free-text keywords
@@ -50,15 +69,18 @@ For each PICO concept, suggest:
 IMPORTANT:
 
 All controlled vocabulary suggestions must be labelled:
+
 "AI-Suggested"
 
 Do not claim that any MeSH or Emtree term has been officially verified.
 
-SEARCH STRATEGY:
+------------------------------------------
+SEARCH STRATEGY 1
+------------------------------------------
 
-Create TWO separate search strategies.
+Create:
 
-STRATEGY 1: recommendedSensitiveStrategy
+recommendedSensitiveStrategy
 
 This is the PRIMARY recommended systematic review strategy.
 
@@ -69,6 +91,7 @@ Population AND Intervention
 It should prioritize sensitivity and recall.
 
 It MUST NOT include:
+
 - Adult
 - Adults
 - Aged
@@ -81,26 +104,30 @@ It MUST NOT include:
 - Seizure frequency
 - Quality of life
 
-The recommended strategy MUST contain the main Population or Problem concept from the research question.
+The recommended strategy MUST contain the main Population or Problem concept.
 
-The recommended strategy MUST contain the main Intervention or Exposure concept from the research question.
+The recommended strategy MUST contain the main Intervention or Exposure concept.
 
 NEVER generate a recommended strategy using only:
+
 Adult AND Intervention AND Comparison
 
 NEVER omit the Population or Problem concept.
 
-For example, for:
+For example:
+
+Research question:
 
 "In adults with drug-resistant epilepsy, does cannabidiol compared with placebo reduce seizure frequency and improve quality of life?"
 
-The recommended sensitive strategy must conceptually be:
+The recommended sensitive strategy should conceptually be:
 
 (Epilepsy population terms)
 AND
 (Cannabidiol intervention terms)
 
 It must NOT contain:
+
 Adult
 Placebo
 Sham
@@ -108,9 +135,16 @@ Control
 Seizure frequency
 Quality of life
 
-STRATEGY 2: optionalFocusedStrategy
+------------------------------------------
+SEARCH STRATEGY 2
+------------------------------------------
 
-This may include:
+Create:
+
+optionalFocusedStrategy
+
+This strategy MAY include:
+
 - Comparison terms
 - Placebo
 - Sham
@@ -123,9 +157,12 @@ Population AND Intervention
 
 Clearly warn that the optional focused strategy may reduce sensitivity and may miss relevant studies.
 
-DATABASE SYNTAX:
+------------------------------------------
+DATABASE SYNTAX
+------------------------------------------
 
 Generate syntax for:
+
 - PubMed
 - Embase
 - Cochrane Library
@@ -133,63 +170,117 @@ Generate syntax for:
 - Web of Science
 - CINAHL
 
-For PubMed:
+PUBMED:
+
 Use [Mesh] for AI-suggested MeSH terms.
+
 Use [tiab] for free-text terms.
 
-For Embase:
+EMBASE:
+
 Use /exp for AI-suggested Emtree terms.
+
 Use :ti,ab for free-text terms.
-Always format Emtree terms exactly as 'Term'/exp.
-Do NOT write 'exp Term'/exp.
+
+Always format Emtree terms exactly as:
+
+'Term'/exp
+
+Do NOT write:
+
+'exp Term'/exp
+
 Do NOT add extra quotes or the word exp before the term.
 
-For Scopus:
-Use TITLE-ABS-KEY().
+SCOPUS:
 
-For Web of Science:
-Use TS=().
+Use:
 
-For CINAHL:
-Use MH "Term+" for AI-suggested subject headings.
-Use TI "Term" OR AB "Term" for free-text keywords.
+TITLE-ABS-KEY()
+
+WEB OF SCIENCE:
+
+Use:
+
+TS=()
+
+CINAHL:
+
+Use:
+
+MH "Term+"
+
+for AI-suggested subject headings.
+
+Use:
+
+TI "Term" OR AB "Term"
+
+for free-text keywords.
+
 Always include all selected Population and Intervention keywords.
+
 Combine synonyms within each concept using OR.
+
 Combine Population and Intervention concepts using AND.
 
-For Cochrane:
-Use [mh] and :ti,ab,kw.
+COCHRANE:
 
-IMPORTANT FINAL CHECK:
+Use:
 
-Before returning the JSON, check the recommendedSensitiveStrategy.
+[mh]
+
+and:
+
+:ti,ab,kw
+
+------------------------------------------
+FINAL QUALITY CHECK
+------------------------------------------
+
+Before returning the JSON, check recommendedSensitiveStrategy.
 
 It MUST:
+
 1. Contain Population/Problem concepts.
 2. Contain Intervention/Exposure concepts.
 3. NOT contain placebo.
 4. NOT contain sham.
 5. NOT contain control.
-6. NOT contain adult, adults, or aged.
-7. NOT contain outcome terms.
-8. NOT contain seizure frequency.
-9. NOT contain quality of life.
+6. NOT contain adult.
+7. NOT contain adults.
+8. NOT contain aged.
+9. NOT contain outcome terms.
+10. NOT contain seizure frequency.
+11. NOT contain quality of life.
 
-If any of these rules are violated, correct the recommendedSensitiveStrategy before returning the answer.
+If any of these rules are violated, correct the recommendedSensitiveStrategy.
 
 The optionalFocusedStrategy may contain comparison or outcome terms but MUST still contain Population AND Intervention.
 
 Perform a sensitivity audit identifying:
+
 - Unnecessary outcome restrictions
 - Unnecessary comparator restrictions
 - Unnecessary age restrictions
 - Missing synonyms
 - Missing spelling variants
-- Missing generic or brand drug names
+- Missing generic drug names
+- Missing brand drug names
+
+------------------------------------------
+IMPORTANT OUTPUT RULE
+------------------------------------------
 
 Return ONLY valid JSON.
-Do not use Markdown code fences.
-Do not write any explanation before or after the JSON.
+
+Do NOT use Markdown.
+
+Do NOT use code fences.
+
+Do NOT write any text before the JSON.
+
+Do NOT write any text after the JSON.
 
 Use exactly this structure:
 
@@ -235,27 +326,36 @@ For every PICO term use:
 }
 
 The vocab field must be exactly one of:
+
 "mesh"
+
 "emtree"
+
 "keyword"
 
-Return only valid JSON.
+Return ONLY valid JSON.
 `;
 
-        // Call OpenRouter
+        // ==========================================
+        // 5. CALL OPENROUTER
+        // ==========================================
+
         const response = await fetch(
             'https://openrouter.ai/api/v1/chat/completions',
             {
                 method: 'POST',
+
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiKey}`,
-                    'HTTP-Referer': 'https://review-ai-ncxw.vercel.app',
-                    'X-OpenRouter-Title': 'ReviewAI'
+                    'HTTP-Referer':
+                        'https://review-ai-ncxw.vercel.app',
+                    'X-OpenRouter-Title':
+                        'ReviewAI'
                 },
+
                 body: JSON.stringify({
-                    // Use a specific model instead of the rotating free router
-                    model: 'openai/gpt-oss-20b:free',
+                    model: 'openrouter/free',
 
                     messages: [
                         {
@@ -268,27 +368,28 @@ Return only valid JSON.
                         }
                     ],
 
-                    temperature: 0.1,
-
-                    // Ask the model to return a JSON object
-                    response_format: {
-                        type: 'json_object'
-                    }
+                    temperature: 0.1
                 })
             }
         );
 
-        // Read OpenRouter response
+        // ==========================================
+        // 6. READ OPENROUTER RESPONSE
+        // ==========================================
+
         const result = await response.json();
 
-        // Handle OpenRouter API errors
+        // ==========================================
+        // 7. HANDLE OPENROUTER API ERRORS
+        // ==========================================
+
         if (!response.ok) {
             console.error(
                 'OpenRouter API Error:',
                 JSON.stringify(result, null, 2)
             );
 
-            return res.status(response.status).json({
+            return res.status(500).json({
                 error:
                     result?.error?.message ||
                     'OpenRouter API request failed',
@@ -297,72 +398,163 @@ Return only valid JSON.
             });
         }
 
-        // Get AI response text
-        const aiText =
-            result?.choices?.[0]?.message?.content;
+        // ==========================================
+        // 8. GET AI TEXT
+        // ==========================================
 
-        if (!aiText) {
+        const choice =
+            result?.choices?.[0];
+
+        const message =
+            choice?.message;
+
+        let aiText =
+            message?.content;
+
+        // ==========================================
+        // 9. HANDLE DIFFERENT OPENROUTER RESPONSES
+        // ==========================================
+
+        // Some providers may return content as an array
+        if (Array.isArray(aiText)) {
+            aiText = aiText
+                .map(item => {
+                    if (typeof item === 'string') {
+                        return item;
+                    }
+
+                    return item?.text || '';
+                })
+                .join('');
+        }
+
+        // Convert to string if necessary
+        if (
+            aiText !== null &&
+            aiText !== undefined &&
+            typeof aiText !== 'string'
+        ) {
+            aiText = JSON.stringify(aiText);
+        }
+
+        // ==========================================
+        // 10. CHECK EMPTY RESPONSE
+        // ==========================================
+
+        if (!aiText || !aiText.trim()) {
             console.error(
-                'OpenRouter returned no content:',
+                'OpenRouter returned empty content'
+            );
+
+            console.error(
+                'Full OpenRouter response:',
                 JSON.stringify(result, null, 2)
             );
 
             return res.status(500).json({
-                error: 'OpenRouter returned an empty response',
-                details: result
+                error:
+                    'OpenRouter returned an empty response',
+
+                details: {
+                    choices:
+                        result?.choices || null,
+
+                    finishReason:
+                        choice?.finish_reason || null,
+
+                    provider:
+                        result?.provider || null,
+
+                    model:
+                        result?.model || null
+                }
             });
         }
 
         console.log(
-            'AI response received:',
-            aiText.substring(0, 1000)
+            'AI response received successfully'
         );
 
         // ==========================================
-        // ROBUST JSON PARSING
+        // 11. CLEAN AI RESPONSE
+        // ==========================================
+
+        let cleanedText =
+            aiText.trim();
+
+        // Remove ```json
+        cleanedText =
+            cleanedText.replace(
+                /^```json\s*/i,
+                ''
+            );
+
+        // Remove ```
+        cleanedText =
+            cleanedText.replace(
+                /^```\s*/i,
+                ''
+            );
+
+        cleanedText =
+            cleanedText.replace(
+                /\s*```$/i,
+                ''
+            );
+
+        cleanedText =
+            cleanedText.trim();
+
+        // ==========================================
+        // 12. FIND JSON OBJECT
+        // ==========================================
+
+        const firstBrace =
+            cleanedText.indexOf('{');
+
+        const lastBrace =
+            cleanedText.lastIndexOf('}');
+
+        if (
+            firstBrace === -1 ||
+            lastBrace === -1 ||
+            lastBrace <= firstBrace
+        ) {
+            console.error(
+                'No JSON object found'
+            );
+
+            console.error(
+                'AI response:',
+                aiText
+            );
+
+            return res.status(500).json({
+                error:
+                    'AI response did not contain valid JSON',
+
+                rawResponse:
+                    aiText
+            });
+        }
+
+        cleanedText =
+            cleanedText.substring(
+                firstBrace,
+                lastBrace + 1
+            );
+
+        // ==========================================
+        // 13. PARSE JSON
         // ==========================================
 
         let parsedData;
 
         try {
-            let cleanedText = aiText.trim();
-
-            // Remove Markdown code fences if the model ignores instructions
-            cleanedText = cleanedText
-                .replace(/^```json\s*/i, '')
-                .replace(/^```\s*/i, '')
-                .replace(/\s*```$/i, '')
-                .trim();
-
-            // Find the first JSON object
-            const firstBrace =
-                cleanedText.indexOf('{');
-
-            // Find the final JSON object closing brace
-            const lastBrace =
-                cleanedText.lastIndexOf('}');
-
-            if (
-                firstBrace === -1 ||
-                lastBrace === -1 ||
-                lastBrace <= firstBrace
-            ) {
-                throw new Error(
-                    'No valid JSON object found in AI response'
-                );
-            }
-
-            // Extract only the JSON object
-            cleanedText =
-                cleanedText.substring(
-                    firstBrace,
-                    lastBrace + 1
-                );
-
-            // Parse JSON
             parsedData =
-                JSON.parse(cleanedText);
-
+                JSON.parse(
+                    cleanedText
+                );
         } catch (parseError) {
             console.error(
                 'JSON Parse Error:',
@@ -370,12 +562,18 @@ Return only valid JSON.
             );
 
             console.error(
-                'Full AI Response:',
+                'AI Raw Response:',
                 aiText
             );
 
+            console.error(
+                'Cleaned Response:',
+                cleanedText
+            );
+
             return res.status(500).json({
-                error: 'AI returned invalid JSON',
+                error:
+                    'AI returned invalid JSON',
 
                 details:
                     parseError.message,
@@ -386,7 +584,7 @@ Return only valid JSON.
         }
 
         // ==========================================
-        // BASIC RESPONSE VALIDATION
+        // 14. BASIC VALIDATION
         // ==========================================
 
         if (
@@ -395,26 +593,66 @@ Return only valid JSON.
         ) {
             return res.status(500).json({
                 error:
-                    'AI returned an invalid response structure'
+                    'Invalid AI response structure'
             });
         }
 
+        // Make sure required sections exist
         if (!parsedData.pico) {
-            console.warn(
-                'Warning: PICO section is missing'
-            );
+            parsedData.pico = {
+                population: [],
+                intervention: [],
+                comparison: [],
+                outcome: []
+            };
+        }
+
+        if (!parsedData.qualityCheck) {
+            parsedData.qualityCheck = {
+                strengths: [],
+                warnings: []
+            };
         }
 
         if (
             !parsedData.recommendedSensitiveStrategy
         ) {
-            console.warn(
-                'Warning: Recommended strategy is missing'
-            );
+            parsedData.recommendedSensitiveStrategy = {
+                logic:
+                    'Population AND Intervention',
+                pubmed: '',
+                embase: '',
+                cochrane: '',
+                scopus: '',
+                webOfScience: '',
+                cinahl: ''
+            };
+        }
+
+        if (
+            !parsedData.optionalFocusedStrategy
+        ) {
+            parsedData.optionalFocusedStrategy = {
+                logic:
+                    'Population AND Intervention AND optional Comparison and/or Outcome',
+                pubmed: '',
+                embase: '',
+                cochrane: '',
+                scopus: '',
+                webOfScience: '',
+                cinahl: ''
+            };
+        }
+
+        if (
+            typeof parsedData.explanation !==
+            'string'
+        ) {
+            parsedData.explanation = '';
         }
 
         // ==========================================
-        // SAFETY CHECK FOR SENSITIVE STRATEGY
+        // 15. CHECK SENSITIVE STRATEGY
         // ==========================================
 
         const sensitiveFields = [
@@ -438,47 +676,43 @@ Return only valid JSON.
             'quality of life'
         ];
 
-        if (
-            parsedData.recommendedSensitiveStrategy
+        for (
+            const field
+            of sensitiveFields
         ) {
-            for (
-                const field
-                of sensitiveFields
+            const strategy =
+                parsedData
+                    .recommendedSensitiveStrategy[
+                        field
+                    ];
+
+            if (
+                typeof strategy ===
+                'string'
             ) {
-                const strategy =
-                    parsedData
-                        .recommendedSensitiveStrategy[
-                            field
-                        ];
+                const lowerStrategy =
+                    strategy.toLowerCase();
+
+                const foundForbiddenTerm =
+                    forbiddenTerms.find(
+                        term =>
+                            lowerStrategy.includes(
+                                term
+                            )
+                    );
 
                 if (
-                    typeof strategy ===
-                    'string'
+                    foundForbiddenTerm
                 ) {
-                    const lowerStrategy =
-                        strategy.toLowerCase();
-
-                    const foundForbiddenTerm =
-                        forbiddenTerms.find(
-                            term =>
-                                lowerStrategy.includes(
-                                    term
-                                )
-                        );
-
-                    if (
-                        foundForbiddenTerm
-                    ) {
-                        console.warn(
-                            `Warning: Recommended strategy contains forbidden term "${foundForbiddenTerm}" in ${field}`
-                        );
-                    }
+                    console.warn(
+                        `Sensitive strategy warning: "${foundForbiddenTerm}" found in ${field}`
+                    );
                 }
             }
         }
 
         // ==========================================
-        // RETURN FORMAT EXPECTED BY FRONTEND
+        // 16. RETURN DATA TO FRONTEND
         // ==========================================
 
         return res.status(200).json({
@@ -499,6 +733,11 @@ Return only valid JSON.
         });
 
     } catch (error) {
+
+        // ==========================================
+        // 17. GENERAL SERVER ERROR
+        // ==========================================
+
         console.error(
             'Server Error:',
             error
